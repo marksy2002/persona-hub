@@ -1,10 +1,12 @@
 import argparse
 from transformers import AutoTokenizer
+import transformers
+import torch
 import json
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
 from datasets import load_dataset
-from code.prompt_templates import instruction_template, knowledge_template, npc_template, math_template
+from code.prompt_templates import msp_template
 
 def request_input_format(user_prompt, tokenizer):
     system_prompt = "You are a helpful assistant."
@@ -14,16 +16,17 @@ def request_input_format(user_prompt, tokenizer):
 
 def main(args):
     # Load the appropriate template
-    if args.template == "instruction":
-        template = instruction_template
-    elif args.template == "knowledge":
-        template = knowledge_template
-    elif args.template == "npc":
-        template = npc_template
-    elif args.template == "math":
-        template = math_template
-    else:
-        raise ValueError("Invalid template type. Choose from 'instruction', 'knowledge', 'math' or 'npc'.")
+
+    model_id = "meta-llama/Meta-Llama-3.1-70B-Instruct"
+
+    pipeline = transformers.pipeline(
+        "text-generation",
+        model=model_id,
+        model_kwargs={"torch_dtype": torch.bfloat16},
+        device_map="auto",
+    )
+
+    template = msp_template
 
     # Load the dataset
     persona_dataset = load_dataset("proj-persona/PersonaHub", data_files="persona.jsonl")['train']
@@ -49,7 +52,13 @@ def main(args):
     print(f"Sample 0: {prompts[0]}")
 
     sampling_params = SamplingParams(temperature=0.6, top_p=0.95, max_tokens=max_len, stop=["<|eot_id|>"])
-    outputs = llm.generate(prompts, sampling_params)
+    model_id = "meta-llama/Llama-3.1-8B"
+
+    pipeline = transformers.pipeline(
+        "text-generation", model=model_id, model_kwargs={"torch_dtype": torch.bfloat16}, device_map="auto",temperature=0.6, top_p=0.95, max_tokens=max_len, stop=["<|eot_id|>"]
+    )
+    #outputs = llm.generate(prompts, sampling_params)
+    outputs=pipeline(prompts)
 
     with open(args.output_path, 'w') as out:
         for i, output in enumerate(outputs):
@@ -70,7 +79,7 @@ if __name__ == "__main__":
         '--template', 
         type=str, 
         required=True, 
-        choices=['instruction', 'knowledge', 'npc', 'math'], 
+        choices=['instruction', 'knowledge', 'npc', 'math' , 'msp_template'], 
         help=(
             "Prompt templates. Choose from 'instruction', 'knowledge', 'math' or 'npc'. "
             "You can also add more customized templates in code/templates.py"
